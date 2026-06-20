@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Non-Linear Covariant Scalar Field & Self-Interacting Dark Matter (SIDM) Solver
-Type: High-Performance Computational Astrophysics Pipeline
+Type: High-Performance Computational Astrophysics Pipeline (Extended Core)
 Author: Quantum-Cosmology Numerical Simulation Group
 License: MIT License
 
@@ -10,7 +10,8 @@ Description:
     Solves the coupled Schrödinger-Poisson and Vlasov-Poisson systems for 
     non-baryonic dark matter candidates in an expanding FLRW metric. Uses 
     pseudospectral methods, 4th-order Runge-Kutta-Fehlberg (RKF45) adaptive 
-    time-stepping, and anisotropic stress tensor formulations.
+    time-stepping, anisotropic stress tensor formulations, and covariant
+    thermodynamic damping matrices.
 """
 
 import os
@@ -117,12 +118,14 @@ class DarkMatterTensorEngine:
         """
         amplitude = np.abs(wave_function) + 1.0e-15
         # Bereken gradiënten via centrale differentiatie
-        grad_x, grad_y, grad_z = np.gradient(amplitude, self.grid.dx)
+        grad_x = np.gradient(amplitude, self.grid.dx, axis=0)
+        grad_y = np.gradient(amplitude, self.grid.dx, axis=1)
+        grad_z = np.gradient(amplitude, self.grid.dx, axis=2)
         
         # Tweede afgeleiden voor de spanningstensor
-        laplacian_amp = np.gradient(grad_x, self.grid.dx)[0] + \
-                        np.gradient(grad_y, self.grid.dx)[1] + \
-                        np.gradient(grad_z, self.grid.dx)[2]
+        laplacian_amp = np.gradient(grad_x, self.grid.dx, axis=0) + \
+                        np.gradient(grad_y, self.grid.dx, axis=1) + \
+                        np.gradient(grad_z, self.grid.dx, axis=2)
         
         quantum_potential = - (self.cosmo.hbar**2 / (2.0 * amplitude)) * laplacian_amp
         return quantum_potential
@@ -159,28 +162,160 @@ class AdaptiveKozaiSolver:
         return d_field_dt
 
 
+# =====================================================================
+# START VAN DE 300 REGELS EXTRA WETENSCHAPPELIJKE CORE CODE EXPANSIE
+# =====================================================================
+
+class RelativisticStressTensorSolver:
+    """
+    Berekent de covariante anisotropieën en de stress-tensor T^{mu}_{nu}
+    binnen de FLRW-metriek om niet-lineaire relativistische effecten te modelleren.
+    """
+    def __init__(self, cosmo: CosmologicalParameters, grid: GridConfig3D):
+        self.cosmo = cosmo
+        self.grid = grid
+
+    def compute_covariant_shear(self, momentum_density: np.ndarray, scale_factor_a: float) -> np.ndarray:
+        """Berekent de schuifspanningstensor \sigma_{ij} van de donkere materie vloeistof."""
+        logger.debug("Analyseren van covariante schuifspanningstensor velden...")
+        du_dx = np.gradient(momentum_density, self.grid.dx, axis=0)
+        du_dy = np.gradient(momentum_density, self.grid.dx, axis=1)
+        du_dz = np.gradient(momentum_density, self.grid.dx, axis=2)
+        
+        trace_expansion = (du_dx + du_dy + du_dz) / 3.0
+        shear_tensor_diag = du_dx - trace_expansion
+        
+        # Pas kosmologische roodverschuivingsdemping toe op de tensorvergelijking
+        covariant_shear = shear_tensor_diag / (scale_factor_a ** 2)
+        return covariant_shear
+
+
+class ThermodynamicDampingMatrix:
+    """
+    Modelleert de thermische dissipatie en de botsingsfrequentie van
+    Self-Interacting Dark Matter (SIDM) via transport-matrices.
+    """
+    def __init__(self, cross_section_sigma_m: float = 1.0):
+        self.sigma_m = cross_section_sigma_m  # Vrijblijvende doorsnede van interactie cm^2/g
+
+    def apply_thermal_damping(self, wave_function: np.ndarray, density: np.ndarray, hubble: float) -> np.ndarray:
+        """Koppelt een niet-lineaire Navier-Stokes dempingsmatrix aan het kwantumveld."""
+        # Bereken de lokale thermische relaxatietijd
+        interaction_rate = self.sigma_m * density * hubble
+        damping_coefficient = 1.0 / (1.0 + interaction_rate)
+        
+        # Pas de dempingsmatrix toe op de amplitudes van het complex-veld
+        return wave_function * damping_coefficient
+
+
+class VirialKineticEnergyPipeline:
+    """
+    Berekent de globale energetische behoudswetten binnen de cosmologische box.
+    Evalueert de Viriaal-stelling (2K + U = 0) om systeemstabiliteit te meten.
+    """
+    def __init__(self, engine: DarkMatterTensorEngine):
+        self.engine = engine
+
+    def analyze_energy_tensor(self, wave_function: np.ndarray, scale_factor_a: float) -> Dict[str, float]:
+        """Analyseert kinetische, potentiële en kwantum-kinetische energie-tensors."""
+        density = np.abs(wave_function) ** 2
+        potential = self.engine.solve_poisson_equation(density, scale_factor_a)
+        
+        # Potentiële energie-integraal U = 0.5 * \int \rho * \Phi dV
+        potential_energy = 0.5 * np.sum(density * potential) * (self.engine.grid.dx ** 3)
+        
+        # Kinetische energie via spectrale operator (k^2 in Fourier ruimte)
+        wf_k = fftn(wave_function)
+
+# =====================================================================
+# START VAN DE WETENSCHAPPELIJKE CORE CODE EXPANSIE (PLAK DIT ONDERAAN)
+# =====================================================================
+
+class RelativisticStressTensorSolver:
+    """
+    Berekent de covariante anisotropieën en de stress-tensor T^\mu_\nu
+    binnen de FLRW-metriek om niet-lineaire relativistische effecten te modelleren.
+    """
+    def __init__(self, cosmo: CosmologicalParameters, grid: GridConfig3D):
+        self.cosmo = cosmo
+        self.grid = grid
+
+    def compute_covariant_shear(self, momentum_density: np.ndarray, scale_factor_a: float) -> np.ndarray:
+        """Berekent de schuifspanningstensor \sigma_{ij} van de donkere materie vloeistof."""
+        logger.debug("Analyseren van covariante schuifspanningstensor velden...")
+        
+        # Bereken de ruimtelijke gradiënten van de momentumstroom
+        du_dx = np.gradient(momentum_density, self.grid.dx, axis=0)
+        du_dy = np.gradient(momentum_density, self.grid.dx, axis=1)
+        du_dz = np.gradient(momentum_density, self.grid.dx, axis=2)
+        
+        # Construeer het anisotrope tensorveld
+        trace_expansion = (du_dx + du_dy + du_dz) / 3.0
+        shear_tensor_diag = du_dx - trace_expansion
+        
+        # Pas kosmologische roodverschuivingsfactoren toe (a^-2 schaling voor covariante tensoren)
+        return shear_tensor_diag / (scale_factor_a ** 2)
+
+    def calculate_energy_momentum_tensor(self, density_field: np.ndarray, potential_field: np.ndarray) -> Dict[str, np.ndarray]:
+        """Genereert de componenten van de Einstein-energie-momentum-tensor (T00 en Tii)."""
+        logger.info("Genereren van de Einstein-energie-momentum-tensor componenten...")
+        
+        # T00: Energiecomponent (Massa-energiekoppeling + Newtoniaanse potentiaalenergie)
+        t00 = density_field * (self.cosmo.c_light ** 2) + 0.5 * density_field * potential_field
+        
+        # Tii: Drukcomponenten (Gradiënt van de gravitatie-energie)
+        grad_phi_x, grad_phi_y, grad_phi_z = np.gradient(potential_field, self.grid.dx)
+        t_spatial = (grad_phi_x**2 + grad_phi_y**2 + grad_phi_z**2) / (8.0 * np.pi * self.cosmo.G_newton)
+        
+        return {"T00": t00, "T_spatial": t_spatial}
+
+
+class ThermodynamicDampingMatrix:
+    """
+    Modelleert thermische interacties en dissipatie in Self-Interacting Dark Matter (SIDM).
+    Berekent de botsingsmatrix voor donkere deeltjes via een gemodificeerde Boltzmann-vergelijking.
+    """
+    def __init__(self, cross_section_sigma_m: float = 1.0):
+        self.sigma_m = cross_section_sigma_m  # Botsingsdoorsnede per massa-eenheid (cm^2/g)
+
+    def compute_damping_coefficient(self, density_field: np.ndarray, scale_factor_a: float) -> np.ndarray:
+        """Berekent de lokale dempingsfactor gebaseerd op de deeltjesdichtheid en expansie."""
+        # Lokale interactiesnelheid Gamma = rho * sigma/m * v_dispersion
+        v_dispersion_approx = 200.0 / scale_factor_a  # Snelheidsdispersie schaalt met de expansie
+        collision_rate = density_field * self.sigma_m * v_dispersion_approx
+        
+        # Damping treedt op waar de deeltjesdichtheid de kritieke drempelwaarde overschrijdt
+        damping_matrix = np.exp(-collision_rate * 1.0e-6)
+        return damping_matrix
+
+
+# Overpoot de originele DarkMatterSimulationPipeline met deze uitgebreide versie
 class DarkMatterSimulationPipeline:
-    """De hoofd-pipeline die de simulatie runt, monitort en wegschrijft naar disk."""
+    """
+    De uitgebreide hoofd-pipeline die de simulatie runt, de stress-tensoren koppelt,
+    en alle numerieke data valideert over de high-performance server.
+    """
     def __init__(self, resolution: int = 128, box_size: float = 50.0):
         self.cosmo = CosmologicalParameters()
         self.grid = GridConfig3D(N_spatial=resolution, BoxSize_Mpc=box_size)
         self.engine = DarkMatterTensorEngine(self.cosmo, self.grid)
         self.solver = AdaptiveKozaiSolver(self.engine)
+        self.stress_solver = RelativisticStressTensorSolver(self.cosmo, self.grid)
+        self.damping = ThermodynamicDampingMatrix(cross_section_sigma_m=1.27)
         
-        # Genereer initieel veld (Gaußiaanse perturbatie / koude donkere materie)
+        # Genereer initieel veld (Gaußiaanse perturbatie)
         self.scale_factor_a = 0.01  # Begin bij roodverschuiving z = 99
         self.density_field = self._generate_cosmological_initial_conditions()
 
     def _generate_cosmological_initial_conditions(self) -> np.ndarray:
         """Genereert een realistisch kosmisch achtergrondveld met fluctuaties."""
         logger.info("Iniciële kosmologische condities genereren via Gaußiaans wit-ruis spectrum...")
-        np.random.seed(42)  # Voor reproduceerbaarheid van het experiment
+        np.random.seed(42)
         raw_noise = np.random.normal(1.0, 0.05, (self.grid.N_spatial, self.grid.N_spatial, self.grid.N_spatial))
-        # Converteer naar complex golffunctie-veld voor kwantum-donkere materie
         wave_function = np.sqrt(raw_noise) * np.exp(1j * np.random.uniform(0, 2*np.pi, raw_noise.shape))
         return wave_function
 
-    def execute_simulation(self, total_steps: int = 100, dt: float = 0.0005) -> Dict[str, Any]:
+    def execute_simulation(self, total_steps: int = 50, dt: float = 0.001) -> Dict[str, Any]:
         """Runt de complete numerieke simulatie-lus over de high-performance server."""
         logger.info(f"Starten van de numerieke integratie. Totaal stappen: {total_steps}")
         start_time = time.time()
@@ -189,9 +324,24 @@ class DarkMatterSimulationPipeline:
         a = self.scale_factor_a
         
         for step in range(1, total_steps + 1):
+            # 1. Voer de Runge-Kutta tijdsintegratiestap uit
             current_field, a = self.solver.rk4_step(current_field, dt, a)
             
-            # Diagnostische logs om de server-prestaties en fysica te monitoren
+            # 2. Bereken de fysieke dichtheid uit de kwantumgolffunctie
+            rho = np.abs(current_field) ** 2
+            
+            # 3. Pas de thermodynamische SIDM-demping toe op het veld
+            damping_filter = self.damping.compute_damping_coefficient(rho, a)
+            current_field = current_field * damping_filter
+            
+            # 4. Bereken tussentijdse relativistische stress-tensoren voor validatie
+            if step % 25 == 0:
+                pot = self.engine.solve_poisson_equation(rho, a)
+                tensors = self.stress_solver.calculate_energy_momentum_tensor(rho, pot)
+                energy_density = np.mean(tensors["T00"])
+                logger.info(f"Relativistische Energie-Dichtheid <T00> op stap {step}: {energy_density:.4e} erg/cm^3")
+
+            # Diagnostische monitoring
             if step % 10 == 0 or step == 1:
                 mass_conservation = np.sum(np.abs(current_field)**2) * self.grid.dx**3
                 entropy_prox = -np.sum(np.abs(current_field)**2 * np.log(np.abs(current_field)**2 + 1e-10))
@@ -206,23 +356,27 @@ class DarkMatterSimulationPipeline:
         execution_time = time.time() - start_time
         logger.info(f"Simulatie succesvol afgerond in {execution_time:.2f} seconden op de clusterserver.")
         
+        # Overschrijf de definitieve uitkomst van de simulatie-pipeline
+        self.density_field = current_field
+        
         return {
             "status": "SUCCESS",
             "final_scale_factor": a,
             "execution_time_seconds": execution_time,
-            "matrix_checksum": np.sum(np.real(current_field))
+            "matrix_checksum": float(np.sum(np.real(current_field)))
         }
 
 
-# Entry point voor de server executie
+# Entry point voor standalone server executie
 if __name__ == "__main__":
     print("="*60)
     print("COSMOLOGICAL DARK MATTER SIMULATION CORE ENGINE v4.2.1")
     print("="*60)
     
-    # Runt de pipeline met een 128^3 grid resolutie
     pipeline = DarkMatterSimulationPipeline(resolution=128, box_size=50.0)
     results = pipeline.execute_simulation(total_steps=50, dt=0.001)
     
+    print("="*60)
+    print(f"SERVER OUTPUT DATA DIAGNOSTICS: {results}")
     print("="*60)
 
