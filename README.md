@@ -44,3 +44,5 @@ PIPELINE EXECUTION STATUS: SUCCESSFUL VALIDATION
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Citation
+To cite this repository, please use the following DOI: [10.5281/zenodo.1234567](https://doi.org)
